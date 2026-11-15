@@ -1,0 +1,13 @@
+{
+  "name": "inventory",
+  "items": [
+    {
+      "sku": "A-1",
+      "qty": 4
+    },
+    {
+      "sku": "B-7",
+      "qty": 0
+    }
+  ]
+}
