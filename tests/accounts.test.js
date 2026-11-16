@@ -105,6 +105,34 @@ test('a user changes their own password', () => {
   assert.ok(acc.login(s, 'admin', 'New-strong-pass-2', T0).ok);
 });
 
+test('anyone can sign up, with checked input and never as an administrator', () => {
+  const s = fresh();
+  assert.strictEqual(acc.register(s, { username: 'a', name: 'Dana', password: 'Strong-pass-1' }).error, 'username_format');
+  assert.strictEqual(acc.register(s, { username: 'admin', name: 'Dana', password: 'Strong-pass-1' }).error, 'username_taken');
+  assert.strictEqual(acc.register(s, { username: 'dana', name: 'Dana', password: '12345678' }).error, 'password_weak');
+  assert.strictEqual(acc.register(s, { username: 'dana', name: 'D', password: 'Strong-pass-1' }).error, 'name_short');
+  const r = acc.register(s, { username: 'Dana', name: 'Dana Student', password: 'Strong-pass-1', role: 'admin' }, T0);
+  assert.ok(r.ok);
+  assert.strictEqual(r.user.role, 'analyst', 'the role comes from the settings, not from the form');
+  assert.strictEqual(r.user.mustChange, false, 'a self-chosen password needs no change');
+  assert.strictEqual(r.user.createdBy, 'self');
+  assert.ok(acc.login(s, 'dana', 'Strong-pass-1', T0 + 1).ok);
+  assert.ok(s.events.some((e) => e.event === 'signed_up' && e.target === 'dana'));
+});
+
+test('an administrator can turn sign-up off or make new accounts viewers', () => {
+  const s = fresh(), a = admin(s);
+  const analyst = acc.register(s, { username: 'erlan', name: 'Erlan', password: 'Strong-pass-1' }).user;
+  assert.strictEqual(acc.setSignup(s, analyst, false, 'analyst').error, 'forbidden');
+  assert.strictEqual(acc.setSignup(s, a, true, 'admin').error, 'role');
+  assert.ok(acc.setSignup(s, a, true, 'viewer').ok);
+  assert.strictEqual(acc.register(s, { username: 'gulnar', name: 'Gulnar', password: 'Strong-pass-1' }).user.role, 'viewer');
+  assert.ok(acc.setSignup(s, a, false, 'viewer').ok);
+  assert.strictEqual(acc.register(s, { username: 'nurlan', name: 'Nurlan', password: 'Strong-pass-1' }).error, 'signup_off');
+  const back = acc.sanitise(JSON.parse(JSON.stringify(s)));
+  assert.deepStrictEqual(back.settings, { signup: false, signupRole: 'viewer' }, 'the settings survive a reload');
+});
+
 test('stored accounts are checked when they are read back', () => {
   const s = fresh();
   assert.ok(acc.sanitise(JSON.parse(JSON.stringify(s))));

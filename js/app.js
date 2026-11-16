@@ -1217,8 +1217,57 @@
         h('h1', { tabindex: '-1', text: t('login.h1') }),
         h('p', { class: 'lead', text: t('login.lead') }),
         h('section', { class: 'panel' }, form),
+        A.settings.signup ? h('p', null, t('login.noaccount') + ' ', h('a', { href: '#/register', id: 'to-register', text: t('login.register') })) : null,
         h('p', { class: 'notice', text: t('login.demo') }),
         h('p', { class: 'help', text: t('login.note') })));
+  }
+
+  /* ---------- page: create an account ---------- */
+
+  function pageRegister() {
+    var page = h('div', { class: 'page page-login' });
+    var box = h('div', { class: 'login' }, h('h1', { tabindex: '-1', text: t('reg.h1') }));
+    page.appendChild(box);
+    if (!A.settings.signup) {
+      box.appendChild(h('p', { class: 'notice notice-warn', text: t('reg.off') }));
+      box.appendChild(h('p', null, h('a', { class: 'btn btn-primary', href: '#/login', text: t('login.btn') })));
+      return page;
+    }
+    var name = h('input', { type: 'text', id: 'reg-name', maxlength: 60, autocomplete: 'name', required: true });
+    var user = h('input', { type: 'text', id: 'reg-user', maxlength: 32, autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', required: true });
+    var pass = passwordInput('reg-pass', 'new-password');
+    var again = passwordInput('reg-repeat', 'new-password');
+    var error = h('p', { class: 'form-error', id: 'reg-error', role: 'alert', tabindex: '-1' });
+    error.hidden = true;
+    function fail(message) { error.textContent = message; error.hidden = false; error.focus(); }
+    var form = h('form', {
+      class: 'login-form', novalidate: true,
+      onsubmit: function (e) {
+        e.preventDefault();
+        if (pass.value !== again.value) { fail(t('pw.mismatch')); return; }
+        var r = accounts.register(A, { username: user.value, name: name.value, password: pass.value });
+        if (r.error) { fail(t('acc.err.' + r.error)); return; }
+        saveAccounts();
+        ME = r.user;
+        accounts.startSession(ME);
+        syncProfile();
+        persist();
+        toast(t('reg.done', { name: ME.name }));
+        go('#/connect');
+      }
+    },
+      field('reg-name', t('adm.f.name'), name),
+      field('reg-user', t('login.user'), user, t('reg.username.help')),
+      field('reg-pass', t('login.pass'), pass, t('pw.rule')),
+      field('reg-repeat', t('pw.repeat'), again),
+      error,
+      h('button', { type: 'submit', class: 'btn btn-primary', id: 'reg-btn', text: t('reg.btn') }));
+    box.appendChild(h('p', { class: 'lead', text: t('reg.lead') }));
+    box.appendChild(h('section', { class: 'panel' }, form));
+    box.appendChild(h('p', { class: 'help', text: t('reg.role', { role: t('role.' + A.settings.signupRole) }) }));
+    box.appendChild(h('p', null, t('reg.have') + ' ', h('a', { href: '#/login', text: t('login.btn') })));
+    box.appendChild(h('p', { class: 'help', text: t('reg.note') }));
+    return page;
   }
 
   /* After an administrator sets a temporary password, the user chooses their own before anything else. */
@@ -1339,7 +1388,8 @@
     return h('tr', null,
       h('td', { 'data-label': t('adm.col.user') },
         h('span', { class: 'user-name', text: u.name + (self ? ' ' + t('adm.you') : '') }),
-        h('span', { class: 'user-login', text: u.username })),
+        h('span', { class: 'user-login', text: u.username }),
+        u.createdBy === 'self' ? h('span', { class: 'user-login', text: t('adm.selfsignup') }) : null),
       h('td', { 'data-label': t('adm.col.role') }, role),
       h('td', { 'data-label': t('adm.col.status') }, h('span', { class: 'st st-' + st, text: t('adm.status.' + st) }),
         u.weak ? h('span', { class: 'weak', text: t('adm.weak.one') }) : null),
@@ -1372,6 +1422,26 @@
       h('tbody', null, users.map(userRow)))));
     page.appendChild(h('p', { class: 'help', text: t('adm.hash.help') }));
     page.appendChild(h('section', { class: 'panel' }, h('h2', { text: t('adm.add') }), addUserForm()));
+
+    var allow = h('input', { type: 'checkbox', id: 'adm-signup' });
+    allow.checked = A.settings.signup;
+    var signupRole = h('select', { id: 'adm-signup-role' },
+      h('option', { value: 'analyst', text: t('role.analyst') }),
+      h('option', { value: 'viewer', text: t('role.viewer') }));
+    signupRole.value = A.settings.signupRole;
+    function saveSignup() {
+      var r = accounts.setSignup(A, ME, allow.checked, signupRole.value);
+      if (r.error) { toast(t('acc.err.' + r.error), 'error'); render(); return; }
+      saveAccounts();
+      toast(t('adm.signup.saved'));
+      render();
+    }
+    allow.addEventListener('change', saveSignup);
+    signupRole.addEventListener('change', saveSignup);
+    page.appendChild(h('section', { class: 'panel' },
+      h('h2', { text: t('adm.signup') }),
+      h('label', { class: 'check', for: 'adm-signup' }, allow, h('span', { text: t('adm.signup.allow') })),
+      field('adm-signup-role', t('adm.signup.role'), signupRole, t('adm.signup.help'))));
 
     var events = A.events.slice(-30).reverse();
     page.appendChild(h('h2', { text: t('adm.events') }));
@@ -1415,7 +1485,7 @@
   function route() {
     var hash = location.hash || '', m;
     if (hash === '' || hash === '#' || hash === '#/') return { name: M.cases.length ? 'queue' : 'connect' };
-    if ((m = /^#\/(connect|queue|audit|report|settings|admin|login)$/.exec(hash))) return { name: m[1] };
+    if ((m = /^#\/(connect|queue|audit|report|settings|admin|login|register)$/.exec(hash))) return { name: m[1] };
     if ((m = /^#\/case\/([A-Za-z0-9-]{1,40})$/.exec(hash))) return { name: 'case', id: m[1] };
     if (hash === '#main') return { name: M.cases.length ? 'queue' : 'connect' };
     return { name: 'notfound' };
@@ -1433,9 +1503,9 @@
 
   /* Signed out: only the sign-in page. A temporary password: only the page that replaces it. */
   function pageFor(r) {
-    if (!ME) return pageLogin();
+    if (!ME) return r.name === 'register' ? pageRegister() : pageLogin();
     if (ME.mustChange) return pageMustChange();
-    if (r.name === 'login') { setTimeout(function () { go(M.cases.length ? '#/queue' : '#/connect'); }, 0); return h('div'); }
+    if (r.name === 'login' || r.name === 'register') { setTimeout(function () { go(M.cases.length ? '#/queue' : '#/connect'); }, 0); return h('div'); }
     return PAGES[r.name](r);
   }
 

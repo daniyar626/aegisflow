@@ -81,9 +81,12 @@
     };
   }
 
+  /* Self sign-up is on by default; new accounts never get the administrator role. */
+  function defaultSettings() { return { signup: true, signupRole: 'analyst' }; }
+
   function defaults(now) {
     now = now || Date.now();
-    return { v: 1, users: [seedAdmin(now)], events: [] };
+    return { v: 1, users: [seedAdmin(now)], events: [], settings: defaultSettings() };
   }
 
   function isObj(v) { return v && typeof v === 'object' && !Array.isArray(v); }
@@ -107,7 +110,12 @@
     });
     if (!activeAdmins({ users: users }).length) return null;
     var events = Array.isArray(p.events) ? p.events.filter(isObj).slice(-200) : [];
-    return { v: 1, users: users, events: events };
+    var settings = defaultSettings();
+    if (isObj(p.settings)) {
+      settings.signup = p.settings.signup !== false;
+      if (p.settings.signupRole === 'viewer') settings.signupRole = 'viewer';
+    }
+    return { v: 1, users: users, events: events, settings: settings };
   }
 
   function activeAdmins(state) {
@@ -187,6 +195,31 @@
     state.users.push(u);
     logEvent(state, actor.username, 'created', u.username, now);
     return { ok: true, user: u };
+  }
+
+  /* Anyone may create an account while sign-up is on. The role comes from the settings, never from the form. */
+  function register(state, input, now) {
+    now = now || Date.now();
+    if (!state.settings || !state.settings.signup) return { error: 'signup_off' };
+    var role = state.settings.signupRole === 'viewer' ? 'viewer' : 'analyst';
+    var err = validateNew(state, { username: input.username, name: input.name, role: role, password: input.password });
+    if (err) return { error: err };
+    var u = {
+      id: 'u-' + randomHex(6), username: String(input.username).trim().toLowerCase(), name: String(input.name).trim().slice(0, 60),
+      role: role, hash: hashPassword(String(input.password)), weak: false, mustChange: false, disabled: false,
+      created: now, createdBy: 'self', lastLogin: now, failed: 0, lockedUntil: 0
+    };
+    state.users.push(u);
+    logEvent(state, u.username, 'signed_up', u.username, now);
+    return { ok: true, user: u };
+  }
+
+  function setSignup(state, actor, enabled, role, now) {
+    if (!requireAdmin(actor)) return { error: 'forbidden' };
+    if (role !== 'analyst' && role !== 'viewer') return { error: 'role' };
+    state.settings = { signup: !!enabled, signupRole: role };
+    logEvent(state, actor.username, 'signup_settings', '', now);
+    return { ok: true };
   }
 
   /* The last active administrator can never be removed, disabled or demoted. */
@@ -272,7 +305,7 @@
     ROLES: ROLES, MAX_FAILS: MAX_FAILS, LOCK_MS: LOCK_MS,
     hashPassword: hashPassword, verify: verify, isWeak: isWeak, defaults: defaults, sanitise: sanitise,
     activeAdmins: activeAdmins, find: find, isLocked: isLocked,
-    login: login, createUser: createUser, setRole: setRole, setDisabled: setDisabled, unlock: unlock,
+    login: login, register: register, setSignup: setSignup, createUser: createUser, setRole: setRole, setDisabled: setDisabled, unlock: unlock,
     resetPassword: resetPassword, deleteUser: deleteUser, changePassword: changePassword,
     _digest: digest, _seedSalt: SEED_SALT,
 
