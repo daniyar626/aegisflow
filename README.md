@@ -28,7 +28,7 @@ Then open `http://localhost:5173`.
 
 **Test account:** user name `admin`, password `password` (administrator).
 
-There is no public sign-up. The administrator creates the other accounts on the **Users** page and gives each one a role: administrator, analyst or viewer. Every decision is recorded under the signed-in account. Accounts are kept in this browser only, so every visitor starts with the same demo administrator; **Users, Restore demo accounts** brings that state back.
+Anyone can create an account with **Create an account** on the sign-in page; such accounts are analysts and never administrators. The administrator can also create accounts on the **Users** page, give each one a role (administrator, analyst or viewer), switch sign-up off, or make new sign-ups viewers. Every decision is recorded under the signed-in account. Accounts are kept in this browser only, so an account works only in the browser where it was created, and every visitor starts with the same demo administrator; **Users, Restore demo accounts** brings that state back.
 
 ## Core journey
 
@@ -68,6 +68,8 @@ There is no public sign-up. The administrator creates the other accounts on the 
 | Wrong password or unknown user | Sign in with a wrong password | One message for both, so the form does not reveal which user names exist |
 | Repeated failed sign-ins | Five wrong passwords for one account | The account locks for one minute, even for the right password; an administrator can unlock it |
 | Weak password | Create an account with the password `password` | Refused; the rule is explained |
+| Taken user name | Sign up as `admin` | Refused: the user name is already taken |
+| Sign-up turned off | **Users**, untick **Allow people to create their own accounts**, sign out | The sign-in page shows no sign-up link, and the sign-up page says sign-up is off |
 | Removing the last administrator | Try to delete, disable or demote your own administrator account | Refused: at least one active administrator must remain |
 | Evidence not reviewed | Approve without ticking the box | The dialog will not record the approval |
 | Permission denied | Sign in as a viewer and try to decide, or open **Users** as an analyst | The action is refused with an explanation |
@@ -122,6 +124,7 @@ Do not invent participants, quotations or timings. If fewer than five sessions w
 - There are no API keys or secrets in the code.
 - Passwords are never stored. Each is kept as a SHA-256 hash with its own random salt, repeated 4,000 times; the demo administrator's hash is fixed in `accounts.js`, not its password. Hashes are compared in constant time.
 - A failed sign-in gives the same message for an unknown user and a wrong password. Five failures lock the account for one minute. New and reset passwords must have at least 8 characters, not be a common password and not equal the user name; a temporary password must be replaced at the next sign-in.
+- An account created by sign-up gets its role from the administrator's setting (analyst or viewer), never from the form, so nobody can sign up as an administrator.
 - Only administrators open the **Users** page. An administrator cannot delete or disable their own account, and the last active administrator cannot be removed or demoted.
 
 **Accessibility.** Semantic headings, tables and form labels; full keyboard operation with a visible focus ring; a skip link; dialogs that trap focus and return it; errors announced to screen readers; colour is never the only signal (severity and verdict are always written out); text contrast of at least 4.5 to 1; layouts that reflow down to phone width; motion reduced when the system asks for it; the page language attribute switches with the interface language.
@@ -134,7 +137,7 @@ Do not invent participants, quotations or timings. If fewer than five sessions w
 node --test tests/
 ```
 
-31 checks. 21 in `engine.test.js` cover the lab dataset (211 alerts become 11 cases with the expected verdicts), import of valid, damaged, empty and unrelated files, the alert limit, behaviour during a reputation outage, hostile field values, the SHA-256 implementation against the platform one, and that English and Kazakh contain the same text keys and placeholders. 10 in `accounts.test.js` cover sign-in, salted hashes, the lockout, input checks, role rules and the protection of the last administrator.
+33 checks. 21 in `engine.test.js` cover the lab dataset (211 alerts become 11 cases with the expected verdicts), import of valid, damaged, empty and unrelated files, the alert limit, behaviour during a reputation outage, hostile field values, the SHA-256 implementation against the platform one, and that English and Kazakh contain the same text keys and placeholders. 12 in `accounts.test.js` cover sign-in, sign-up, salted hashes, the lockout, input checks, role rules, the sign-up settings and the protection of the last administrator.
 
 To regenerate the sample files:
 
@@ -148,7 +151,7 @@ node tools/make-sample-data.js
 |---|---|---|
 | Summaries written by a cloud language model, with redaction | Fixed, readable rules that run in the browser; no generative model | Privacy concern raised in customer development (R8), the risk of invented facts (weakness W1, R7), and the need for a demonstration that behaves the same every time |
 | Live read-only Wazuh API connector with an API key | Import of the `alerts.json` export by file or paste | A static page cannot keep an API key safe, and calling a Wazuh manager from a browser needs cross-origin and certificate changes on the customer's server; asking testers for API keys also conflicts with buyer risk aversion (threat T2) |
-| Sign-in before connecting Wazuh | Accounts with three roles, an administrator page to create, disable, unlock, reset and delete accounts, and passwords kept as salted hashes | Every decision must be tied to a person. With no server yet, accounts are checked in the browser, and this is stated as a limit |
+| Sign-in before connecting Wazuh | Sign-in and sign-up, accounts with three roles, an administrator page to create, disable, unlock, reset and delete accounts, and passwords kept as salted hashes | Every decision must be tied to a person. With no server yet, accounts are checked in the browser, and this is stated as a limit |
 | English interface | English and Kazakh interface, including generated summaries and error messages | Exam requirement, and bilingual documentation was already named as a service differentiator in Assignment 4 |
 | Confidence shown as a three-level flag | Three-level flag plus the reasons for it and a visible risk score built from listed factors | R2 and R7 asked to see why the tool reached a conclusion |
 | Not planned | Host changes are linked to a preceding successful attack on the same host | Technical finding while building the dataset: the account and sudoers changes looked routine when read alone |
