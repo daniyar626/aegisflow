@@ -1259,7 +1259,7 @@
       field('reg-name', t('adm.f.name'), name),
       field('reg-user', t('login.user'), user, t('reg.username.help')),
       field('reg-pass', t('login.pass'), pass, t('pw.rule')),
-      field('reg-repeat', t('pw.repeat'), again),
+      field('reg-repeat', t('reg.repeat'), again),
       error,
       h('button', { type: 'submit', class: 'btn btn-primary', id: 'reg-btn', text: t('reg.btn') }));
     box.appendChild(h('p', { class: 'lead', text: t('reg.lead') }));
