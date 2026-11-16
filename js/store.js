@@ -32,7 +32,7 @@
     if (p.lang === 'en' || p.lang === 'kk') d.lang = p.lang;
     if (isObj(p.profile)) {
       if (typeof p.profile.name === 'string') d.profile.name = p.profile.name.slice(0, 60);
-      if (p.profile.role === 'viewer') d.profile.role = 'viewer';
+      if (p.profile.role === 'viewer' || p.profile.role === 'admin') d.profile.role = p.profile.role;
     }
     if (isObj(p.source) && (p.source.type === 'demo' || p.source.type === 'file' || p.source.type === 'paste')) d.source = p.source;
     if (Array.isArray(p.records)) d.records = p.records;

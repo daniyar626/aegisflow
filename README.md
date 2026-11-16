@@ -24,14 +24,18 @@ Then open `http://localhost:5173`.
 - Netlify Drop: open `https://app.netlify.com/drop` and drag the `AegisFlow-MVP` folder onto the page. It returns a public URL.
 - GitHub Pages: push the folder contents to a repository, then Settings, Pages, deploy from the main branch.
 
-There is no login and no test account. The reviewer types a name, and that name is written into the audit log.
+## Sign in
+
+**Test account:** user name `admin`, password `password` (administrator).
+
+There is no public sign-up. The administrator creates the other accounts on the **Users** page and gives each one a role: administrator, analyst or viewer. Every decision is recorded under the signed-in account. Accounts are kept in this browser only, so every visitor starts with the same demo administrator; **Users, Restore demo accounts** brings that state back.
 
 ## Core journey
 
-1. **Data source.** Enter your name, then load the Wazuh lab dataset or import your own `alerts.json`.
+1. **Sign in and choose the data.** Sign in, then load the Wazuh lab dataset or import your own `alerts.json`.
 2. **Alert queue.** 211 alerts appear as 11 cases, most severe first, each with a verdict and a confidence level.
 3. **Case.** Read what happened in plain language, why the verdict was reached (every point of the score is listed), and the evidence timeline. Any row opens the raw Wazuh record.
-4. **Decision.** Approve the recommended action, dismiss the case as a false positive, or escalate it. Approval needs a name and a confirmation that the evidence was reviewed.
+4. **Decision.** Approve the recommended action, dismiss the case as a false positive, or escalate it. Approval needs a confirmation that the evidence was reviewed, and it is recorded under the signed-in account.
 5. **Outcome.** The decision is stamped, an action ticket is produced for the firewall or host administrator, and the audit log gets an entry with a SHA-256 fingerprint of the evidence.
 6. **Feedback.** Rate the case as useful or not, give a trust score from 1 to 5, and leave a comment. The session report shows time to decision and ratings.
 
@@ -39,7 +43,7 @@ There is no login and no test account. The reviewer types a name, and that name 
 
 | Step | What to do | What it shows |
 |---|---|---|
-| 1 | In English: type a name, press **Load lab dataset** | Entry point, privacy notice |
+| 1 | In English: sign in as `admin` / `password`, press **Load lab dataset** | Sign-in, entry point, privacy notice |
 | 2 | Point at the queue: 211 alerts, 11 cases | Noise reduction, prioritisation |
 | 3 | Open the top case (password guessing followed by a successful login) | Plain-language summary, score, evidence |
 | 4 | Press **Show 143 alerts**, open **List the alerts** | Every claim links to raw records |
@@ -49,6 +53,7 @@ There is no login and no test account. The reviewer types a name, and that name 
 | 8 | Boundary case: on **Data source**, upload `sample-data/3-broken-file.json` | Invalid input is refused with a clear message |
 | 9 | Optional: **Settings**, turn on the reputation feed outage, reopen the web attack case | Verdict drops from likely malicious to needs review, confidence drops, the case still works |
 | 10 | Open **Audit log** and **Session report** | Named decisions, evidence fingerprint, time to decision |
+| 11 | Optional: open **Users**, create an analyst, point at the password hash, then disable or delete the account | Roles, hashed passwords, account management |
 
 ## Boundary and failure cases
 
@@ -59,9 +64,13 @@ There is no login and no test account. The reviewer types a name, and that name 
 | JSON that is not Wazuh alerts | Upload `sample-data/5-not-wazuh-alerts.json` | Explains which fields an alert needs |
 | Partly damaged export | Upload `sample-data/2-partly-damaged-alerts.json` | Loads the 12 good alerts and reports that 3 records were skipped |
 | File too large or too many alerts | Any file over 2 MB or 2,000 alerts | Refuses and asks for a shorter time range |
-| No reviewer name | Leave the name empty and try to approve | The dialog asks for a name and will not record without one |
+| Not signed in | Open any page after signing out | Only the sign-in form is shown |
+| Wrong password or unknown user | Sign in with a wrong password | One message for both, so the form does not reveal which user names exist |
+| Repeated failed sign-ins | Five wrong passwords for one account | The account locks for one minute, even for the right password; an administrator can unlock it |
+| Weak password | Create an account with the password `password` | Refused; the rule is explained |
+| Removing the last administrator | Try to delete, disable or demote your own administrator account | Refused: at least one active administrator must remain |
 | Evidence not reviewed | Approve without ticking the box | The dialog will not record the approval |
-| Permission denied | Settings, set role to Viewer, try to decide | The decision is refused with an explanation |
+| Permission denied | Sign in as a viewer and try to decide, or open **Users** as an analyst | The action is refused with an explanation |
 | Enrichment unavailable | Settings, simulate a reputation feed outage | Verdicts are recomputed without reputation data and confidence is lowered |
 | Empty queue | Decide every case, or filter to nothing | An empty state says what happened and what to do next |
 | Unknown case address | Open `#/case/AF-000000` | A message explains that the case is not in the loaded alerts |
@@ -93,13 +102,13 @@ Do not invent participants, quotations or timings. If fewer than five sessions w
 | Aspect | Description |
 |---|---|
 | Platform | Static single-page web application. HTML, CSS and JavaScript, with no framework and no build step. Runs in any current browser, on desktop and phone. |
-| Architecture | Six scripts loaded in order: `i18n.js` (English and Kazakh text), `intel.js` (address classification and the bundled reputation lists), `engine.js` (parsing, correlation, scoring, recommendation, SHA-256), `demo-data.js` (the lab dataset), `store.js` (browser storage) and `app.js` (pages and dialogs). The engine has no access to the page or the network and is covered by automated tests. |
+| Architecture | Seven scripts loaded in order: `i18n.js` (English and Kazakh text), `intel.js` (address classification and the bundled reputation lists), `engine.js` (parsing, correlation, scoring, recommendation, SHA-256), `accounts.js` (sign-in, roles, salted password hashes, account management), `demo-data.js` (the lab dataset), `store.js` (browser storage) and `app.js` (pages and dialogs). The engine has no access to the page or the network and is covered by automated tests. |
 | How a verdict is reached | Alerts are grouped by source address and host (60-minute gap for address-based cases, 15-minute gap for host-only sessions). Each group is compared with nine known patterns. Points are added or removed for rule level, volume, pattern, reputation and context. Below 25 is likely benign, 25 to 54 needs review, 55 and above is likely malicious. Host activity that starts within an hour of a successful password-guessing attack on the same host is linked to it. The rules are fixed and readable; this version uses no generative AI model. |
-| Data storage | Browser `localStorage` under one key, `aegisflow.v1`: reviewer name and role, language, imported alerts, decisions, audit log, feedback and timers. Nothing is stored on a server. |
+| Data storage | Browser `localStorage`: accounts, roles and password hashes under `aegisflow.accounts.v1`; language, imported alerts, decisions, audit log, feedback and timers under `aegisflow.v1`. The sign-in is kept in `sessionStorage` and ends when the tab closes or the user signs out. Nothing is stored on a server. |
 | Integrations | Input: Wazuh alert JSON, in the `alerts.json` line format, as a JSON array, or as an indexer or API export. Output: an action ticket as text and CSV exports of the audit log and session report. There is no live connection to Wazuh, a firewall, or a ticketing system in this version. |
 | Dependencies | None at run time. Node.js 18 or later is needed only to run the tests and regenerate sample files. No third-party libraries, fonts or CDNs. |
 | Deployment | Copy the folder to any static host. No environment variables, keys or database. |
-| Important limitations | Rule-based analysis covers nine patterns and will label anything else "no known pattern". The reputation data is a small demo list. Decisions are recorded and not executed. The audit log lives in one browser and can be cleared by the user. The reviewer name is typed, not authenticated. Limits: 2,000 alerts or 2 MB per import. |
+| Important limitations | Rule-based analysis covers nine patterns and will label anything else "no known pattern". The reputation data is a small demo list. Decisions are recorded and not executed. The audit log lives in one browser and can be cleared by the user. Accounts and passwords are checked in the browser: with no server, this keeps honest users apart but is not real access control. Limits: 2,000 alerts or 2 MB per import. |
 
 ## Privacy, security, accessibility and safe failure
 
@@ -111,6 +120,9 @@ Do not invent participants, quotations or timings. If fewer than five sessions w
 - A source address is accepted only if it consists of address characters, so a crafted log line cannot inject anything into the example firewall command.
 - CSV exports neutralise cells that start with `=`, `+`, `-` or `@`, so a spreadsheet cannot run them as formulas.
 - There are no API keys or secrets in the code.
+- Passwords are never stored. Each is kept as a SHA-256 hash with its own random salt, repeated 4,000 times; the demo administrator's hash is fixed in `accounts.js`, not its password. Hashes are compared in constant time.
+- A failed sign-in gives the same message for an unknown user and a wrong password. Five failures lock the account for one minute. New and reset passwords must have at least 8 characters, not be a common password and not equal the user name; a temporary password must be replaced at the next sign-in.
+- Only administrators open the **Users** page. An administrator cannot delete or disable their own account, and the last active administrator cannot be removed or demoted.
 
 **Accessibility.** Semantic headings, tables and form labels; full keyboard operation with a visible focus ring; a skip link; dialogs that trap focus and return it; errors announced to screen readers; colour is never the only signal (severity and verdict are always written out); text contrast of at least 4.5 to 1; layouts that reflow down to phone width; motion reduced when the system asks for it; the page language attribute switches with the interface language.
 
@@ -122,7 +134,7 @@ Do not invent participants, quotations or timings. If fewer than five sessions w
 node --test tests/
 ```
 
-21 checks cover the lab dataset (211 alerts become 11 cases with the expected verdicts), import of valid, damaged, empty and unrelated files, the alert limit, behaviour during a reputation outage, hostile field values, the SHA-256 implementation against the platform one, and that English and Kazakh contain the same text keys and placeholders.
+31 checks. 21 in `engine.test.js` cover the lab dataset (211 alerts become 11 cases with the expected verdicts), import of valid, damaged, empty and unrelated files, the alert limit, behaviour during a reputation outage, hostile field values, the SHA-256 implementation against the platform one, and that English and Kazakh contain the same text keys and placeholders. 10 in `accounts.test.js` cover sign-in, salted hashes, the lockout, input checks, role rules and the protection of the last administrator.
 
 To regenerate the sample files:
 
@@ -135,7 +147,8 @@ node tools/make-sample-data.js
 | Planned in Assignment 5 | Built | Evidence or constraint behind the change |
 |---|---|---|
 | Summaries written by a cloud language model, with redaction | Fixed, readable rules that run in the browser; no generative model | Privacy concern raised in customer development (R8), the risk of invented facts (weakness W1, R7), and the need for a demonstration that behaves the same every time |
-| Live read-only Wazuh API connector with an API key | Import of the `alerts.json` export by file or paste | A browser cannot call a Wazuh manager directly (cross-origin rules, self-signed certificates), and asking testers for API keys conflicts with buyer risk aversion (threat T2) |
+| Live read-only Wazuh API connector with an API key | Import of the `alerts.json` export by file or paste | A static page cannot keep an API key safe, and calling a Wazuh manager from a browser needs cross-origin and certificate changes on the customer's server; asking testers for API keys also conflicts with buyer risk aversion (threat T2) |
+| Sign-in before connecting Wazuh | Accounts with three roles, an administrator page to create, disable, unlock, reset and delete accounts, and passwords kept as salted hashes | Every decision must be tied to a person. With no server yet, accounts are checked in the browser, and this is stated as a limit |
 | English interface | English and Kazakh interface, including generated summaries and error messages | Exam requirement, and bilingual documentation was already named as a service differentiator in Assignment 4 |
 | Confidence shown as a three-level flag | Three-level flag plus the reasons for it and a visible risk score built from listed factors | R2 and R7 asked to see why the tool reached a conclusion |
 | Not planned | Host changes are linked to a preceding successful attack on the same host | Technical finding while building the dataset: the account and sudoers changes looked routine when read alone |
@@ -159,10 +172,12 @@ css/styles.css          all styles
 js/i18n.js              English and Kazakh text
 js/intel.js             address classification and demo reputation lists
 js/engine.js            parsing, correlation, scoring, recommendation, SHA-256
+js/accounts.js          sign-in, roles, salted password hashes, account management
 js/demo-data.js         synthetic Wazuh lab dataset (211 alerts)
 js/store.js             browser storage with failure handling
 js/app.js               pages, dialogs, exports
 sample-data/            files for the import demonstration and its error cases
-tests/engine.test.js    automated checks
+tests/engine.test.js    automated checks for the engine and the two languages
+tests/accounts.test.js  automated checks for sign-in and account management
 tools/make-sample-data.js
 ```

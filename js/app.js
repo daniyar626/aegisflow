@@ -1,19 +1,22 @@
 /*
  * AegisFlow interface.
  *
- * Renders five pages from the persisted state and the cases the engine builds.
+ * Renders the pages from the persisted state and the cases the engine builds.
+ * Every page except sign-in needs a signed-in account (see accounts.js).
  * All text reaches the page through text nodes, never innerHTML, because alert
  * content comes from logs an attacker can influence.
  */
 (function () {
   'use strict';
-  var AF = window.AF, I = AF.i18n, t = I.t, store = AF.store, engine = AF.engine, intel = AF.intel;
-  var VERSION = '1.0';
+  var AF = window.AF, I = AF.i18n, t = I.t, store = AF.store, engine = AF.engine, intel = AF.intel, accounts = AF.accounts;
+  var VERSION = '1.1';
   var DECISION_OF = { approved: 'approve', dismissed: 'dismiss', escalated: 'escalate' };
 
   var S;                                                       // persisted state
   var M = { alerts: [], cases: [], byId: {} };                 // derived from the loaded alerts
   var V = { status: 'open', verdict: 'any', q: '', paste: '', importError: null, importWarn: null, storageWarned: false };
+  var A;                                                       // accounts, from accounts.js
+  var ME = null;                                               // the signed-in account
 
   /* ---------- small helpers ---------- */
 
@@ -92,6 +95,43 @@
   function go(hash) {
     if (location.hash === hash) render({ focus: true });
     else location.hash = hash;
+  }
+
+  /* ---------- accounts ---------- */
+
+  /* Decisions and the audit log carry the signed-in account's name and role. */
+  function syncProfile() {
+    if (!ME) return;
+    S.profile.name = ME.name;
+    S.profile.role = ME.role;
+  }
+
+  function saveAccounts() {
+    accounts.save();
+    if (accounts.persistFailed && !V.storageWarned) {
+      V.storageWarned = true;
+      toast(t('err.storage'), 'error');
+    }
+  }
+
+  function signOut() {
+    accounts.endSession();
+    ME = null;
+    S.profile.name = '';
+    persist();
+    toast(t('login.out'));
+    go('#/login');
+  }
+
+  function roleOptions(id, value) {
+    var sel = h('select', { id: id });
+    accounts.ROLES.forEach(function (r) { sel.appendChild(h('option', { value: r, text: t('role.' + r) })); });
+    sel.value = value || 'analyst';
+    return sel;
+  }
+
+  function passwordInput(id, autocomplete) {
+    return h('input', { type: 'password', id: id, maxlength: 128, autocomplete: autocomplete, required: true });
   }
 
   /* ---------- data ---------- */
@@ -278,17 +318,6 @@
       help ? h('p', { class: 'help', text: help }) : null);
   }
 
-  function nameInput(id) {
-    return h('input', { type: 'text', id: id, maxlength: 60, autocomplete: 'name', value: S.profile.name });
-  }
-  function roleSelect(id) {
-    var sel = h('select', { id: id },
-      h('option', { value: 'analyst', text: t('role.analyst') }),
-      h('option', { value: 'viewer', text: t('role.viewer') }));
-    sel.value = S.profile.role;
-    return sel;
-  }
-
   /* ---------- dialogs ---------- */
 
   function openDialog(cfg) {
@@ -467,10 +496,12 @@
     top.textContent = '';
     $('skip').textContent = t('app.skip');
     var active = r.name === 'case' ? 'queue' : r.name;
-    var nav = h('nav', { class: 'nav', 'aria-label': t('nav.label') }, h('ul', null,
-      ['connect', 'queue', 'audit', 'report', 'settings'].map(function (name) {
+    var names = ['connect', 'queue', 'audit', 'report', 'settings'];
+    if (ME && ME.role === 'admin') names.push('admin');
+    var nav = ME && !ME.mustChange ? h('nav', { class: 'nav', 'aria-label': t('nav.label') }, h('ul', null,
+      names.map(function (name) {
         return h('li', null, h('a', { href: '#/' + name, 'aria-current': active === name ? 'page' : null, text: t('nav.' + name) }));
-      })));
+      }))) : null;
     var langs = h('div', { class: 'langs', role: 'group', 'aria-label': t('lang.label') },
       I.languages.map(function (l) {
         return h('button', {
@@ -482,28 +513,18 @@
           }
         }, l.short);
       }));
-    var who = h('a', { class: 'who', href: '#/settings' },
-      S.profile.name ? S.profile.name + ', ' + t('role.' + S.profile.role) : t('profile.none'));
+    var who = ME ? h('a', { class: 'who', href: '#/settings', title: ME.name + ', ' + t('role.' + ME.role) }, ME.name) : null;
+    var out = ME ? h('button', { type: 'button', class: 'signout', onclick: signOut, text: t('signout') }) : null;
     top.appendChild(h('div', { class: 'top-in' },
-      h('a', { class: 'brand', href: '#/' + (M.cases.length ? 'queue' : 'connect') }, h('img', { src: 'favicon.svg', alt: '', width: 26, height: 26 }), 'AegisFlow'),
+      h('a', { class: 'brand', href: '#/' + (!ME ? 'login' : M.cases.length ? 'queue' : 'connect') }, h('img', { src: 'favicon.svg', alt: '', width: 26, height: 26 }), 'AegisFlow'),
       nav,
-      h('div', { class: 'top-side' }, langs, who)));
+      h('div', { class: 'top-side' }, langs, who, out)));
     $('foot').textContent = t('app.footer', { v: VERSION });
   }
 
   /* ---------- page: data source ---------- */
 
   function pageConnect() {
-    var name = nameInput('pf-name'), role = roleSelect('pf-role');
-    function saveProfile() {
-      S.profile.name = name.value.trim().slice(0, 60);
-      S.profile.role = role.value === 'viewer' ? 'viewer' : 'analyst';
-      persist();
-      renderHeader(route());
-    }
-    name.addEventListener('change', saveProfile);
-    role.addEventListener('change', saveProfile);
-
     var file = h('input', { type: 'file', id: 'imp-file', accept: '.json,.ndjson,.log,.txt,application/json' });
     file.addEventListener('change', function () {
       var f = file.files && file.files[0];
@@ -544,8 +565,8 @@
       h('ol', { class: 'steps' },
         h('li', null,
           h('h2', { text: t('connect.step1') }),
-          h('p', { class: 'help', text: t('connect.step1.help') }),
-          h('div', { class: 'row' }, field('pf-name', t('field.name'), name), field('pf-role', t('field.role'), role))),
+          h('p', { class: 'strong', text: t('connect.signedin', { name: ME.name, role: t('role.' + ME.role) }) }),
+          h('p', { class: 'help', text: t('connect.signedin.help') })),
         h('li', null,
           h('h2', { text: t('connect.step2') }),
           M.cases.length ? h('p', { class: 'help', text: t('connect.replace_note') }) : null,
@@ -1081,8 +1102,34 @@
 
   /* ---------- page: settings ---------- */
 
+  /* A form to change a password. With temporary=true it is the step that follows an administrator's reset. */
+  function passwordForm(temporary, done) {
+    var cur = passwordInput('pw-current', 'current-password');
+    var next = passwordInput('pw-new', 'new-password');
+    var again = passwordInput('pw-repeat', 'new-password');
+    var error = h('p', { class: 'form-error', role: 'alert', tabindex: '-1' });
+    error.hidden = true;
+    function fail(message) { error.textContent = message; error.hidden = false; error.focus(); }
+    return h('form', {
+      novalidate: true,
+      onsubmit: function (e) {
+        e.preventDefault();
+        if (next.value !== again.value) { fail(t('pw.mismatch')); return; }
+        var r = accounts.changePassword(A, ME, cur.value, next.value);
+        if (r.error) { fail(t('acc.err.' + r.error)); return; }
+        saveAccounts();
+        toast(t('pw.changed'));
+        done();
+      }
+    },
+      field('pw-current', t(temporary ? 'pw.temp' : 'pw.current'), cur),
+      field('pw-new', t('pw.new'), next, t('pw.rule')),
+      field('pw-repeat', t('pw.repeat'), again),
+      error,
+      h('button', { type: 'submit', class: 'btn btn-primary', text: t('pw.btn') }));
+  }
+
   function pageSettings() {
-    var name = nameInput('set-name'), role = roleSelect('set-role');
     var outage = h('input', { type: 'checkbox', id: 'set-outage' });
     outage.checked = S.settings.intelOutage;
     outage.addEventListener('change', function () {
@@ -1096,20 +1143,14 @@
       h('h1', { tabindex: '-1', text: t('set.h1') }),
       h('section', { class: 'panel' },
         h('h2', { text: t('set.profile') }),
-        h('p', { class: 'help', text: t('connect.step1.help') }),
-        h('form', {
-          novalidate: true,
-          onsubmit: function (e) {
-            e.preventDefault();
-            S.profile.name = name.value.trim().slice(0, 60);
-            S.profile.role = role.value === 'viewer' ? 'viewer' : 'analyst';
-            persist();
-            renderHeader(route());
-            toast(t('set.saved'));
-          }
-        },
-          h('div', { class: 'row' }, field('set-name', t('field.name'), name), field('set-role', t('field.role'), role)),
-          h('button', { type: 'submit', class: 'btn btn-primary', text: t('set.save') }))),
+        ME.weak ? h('p', { class: 'notice notice-warn', text: t('acc.weak.me') }) : null,
+        h('dl', { class: 'kvs' },
+          h('div', { class: 'kv' }, h('dt', { text: t('adm.f.name') }), h('dd', { text: ME.name })),
+          h('div', { class: 'kv' }, h('dt', { text: t('adm.f.username') }), h('dd', { class: 'mono', text: ME.username })),
+          h('div', { class: 'kv' }, h('dt', { text: t('field.role') }), h('dd', { text: t('role.' + ME.role) })),
+          h('div', { class: 'kv' }, h('dt', { text: t('set.account.last') }), h('dd', { text: ME.lastLogin ? fmtTime(ME.lastLogin) : t('adm.never') }))),
+        h('h3', { text: t('pw.btn') }),
+        passwordForm(false, function () { render(); })),
       h('section', { class: 'panel' },
         h('h2', { text: t('set.demo') }),
         h('label', { class: 'check', for: 'set-outage' }, outage, h('span', { text: t('set.outage') })),
@@ -1143,12 +1184,238 @@
         h('ul', null, [1, 2, 3, 4, 5].map(function (n) { return h('li', { text: t('set.limit.' + n) }); }))));
   }
 
+  /* ---------- page: sign in ---------- */
+
+  function pageLogin() {
+    var user = h('input', { type: 'text', id: 'login-user', maxlength: 32, autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', required: true });
+    var pass = passwordInput('login-pass', 'current-password');
+    var error = h('p', { class: 'form-error', id: 'login-error', role: 'alert', tabindex: '-1' });
+    error.hidden = true;
+    function fail(message) { error.textContent = message; error.hidden = false; pass.value = ''; error.focus(); }
+    var form = h('form', {
+      class: 'login-form', novalidate: true,
+      onsubmit: function (e) {
+        e.preventDefault();
+        if (!user.value.trim() || !pass.value) { fail(t('login.err.empty')); return; }
+        var r = accounts.login(A, user.value, pass.value);
+        saveAccounts();
+        if (r.error) { fail(t('login.err.' + r.error, { s: r.seconds })); return; }
+        ME = r.user;
+        accounts.startSession(ME);
+        syncProfile();
+        persist();
+        toast(t('login.welcome', { name: ME.name }));
+        go(ME.mustChange ? '#/login' : (M.cases.length ? '#/queue' : '#/connect'));
+      }
+    },
+      field('login-user', t('login.user'), user),
+      field('login-pass', t('login.pass'), pass),
+      error,
+      h('button', { type: 'submit', class: 'btn btn-primary', id: 'login-btn', text: t('login.btn') }));
+    return h('div', { class: 'page page-login' },
+      h('div', { class: 'login' },
+        h('h1', { tabindex: '-1', text: t('login.h1') }),
+        h('p', { class: 'lead', text: t('login.lead') }),
+        h('section', { class: 'panel' }, form),
+        h('p', { class: 'notice', text: t('login.demo') }),
+        h('p', { class: 'help', text: t('login.note') })));
+  }
+
+  /* After an administrator sets a temporary password, the user chooses their own before anything else. */
+  function pageMustChange() {
+    return h('div', { class: 'page page-login' },
+      h('div', { class: 'login' },
+        h('h1', { tabindex: '-1', text: t('must.h1') }),
+        h('p', { class: 'lead', text: t('must.lead') }),
+        h('section', { class: 'panel' }, passwordForm(true, function () { go(M.cases.length ? '#/queue' : '#/connect'); })),
+        h('p', null, h('button', { type: 'button', class: 'btn btn-quiet', onclick: signOut, text: t('signout') }))));
+  }
+
+  /* ---------- page: users and access (administrators) ---------- */
+
+  function statusOfUser(u) {
+    if (u.disabled) return 'disabled';
+    if (accounts.isLocked(u)) return 'locked';
+    if (u.mustChange) return 'mustchange';
+    return 'active';
+  }
+
+  function adminResult(r, okKey, u, extra) {
+    if (r.error) { toast(t('acc.err.' + r.error), 'error'); render(); return false; }
+    saveAccounts();
+    var p = { user: u.username };
+    for (var k in extra || {}) p[k] = extra[k];
+    toast(t(okKey, p));
+    return true;
+  }
+
+  function askReset(u) {
+    var pw = passwordInput('dlg-pw', 'new-password');
+    openDialog({
+      title: t('adm.reset.title', { user: u.username }),
+      confirm: t('adm.reset.confirm'),
+      body: [h('p', { text: t('adm.reset.body') }), field('dlg-pw', t('adm.f.password'), pw, t('pw.rule'))],
+      onConfirm: function () {
+        var r = accounts.resetPassword(A, ME, u.id, pw.value);
+        if (r.error) return t('acc.err.' + r.error);
+        adminResult(r, 'adm.reset.done', u);
+        render();
+        return '';
+      }
+    });
+  }
+
+  function askDelete(u) {
+    openDialog({
+      title: t('adm.delete.title', { user: u.username }),
+      confirm: t('adm.delete.confirm'), danger: true,
+      body: h('p', { text: t('adm.delete.body') }),
+      onConfirm: function () {
+        var r = accounts.deleteUser(A, ME, u.id);
+        if (r.error) return t('acc.err.' + r.error);
+        adminResult(r, 'adm.deleted', u);
+        render();
+        return '';
+      }
+    });
+  }
+
+  function addUserForm() {
+    var uname = h('input', { type: 'text', id: 'adm-username', maxlength: 32, autocomplete: 'off', autocapitalize: 'none', spellcheck: 'false' });
+    var name = h('input', { type: 'text', id: 'adm-name', maxlength: 60, autocomplete: 'off' });
+    var role = roleOptions('adm-role', 'analyst');
+    var pw = passwordInput('adm-password', 'new-password');
+    var error = h('p', { class: 'form-error', role: 'alert', tabindex: '-1' });
+    error.hidden = true;
+    return h('form', {
+      novalidate: true,
+      onsubmit: function (e) {
+        e.preventDefault();
+        var r = accounts.createUser(A, ME, { username: uname.value, name: name.value, role: role.value, password: pw.value });
+        if (r.error) { error.textContent = t('acc.err.' + r.error); error.hidden = false; error.focus(); return; }
+        saveAccounts();
+        toast(t('adm.created', { user: r.user.username }));
+        render();
+      }
+    },
+      h('p', { class: 'help', text: t('adm.add.help') }),
+      h('div', { class: 'grid-form' },
+        field('adm-username', t('adm.f.username'), uname),
+        field('adm-name', t('adm.f.name'), name),
+        field('adm-role', t('adm.f.role'), role),
+        field('adm-password', t('adm.f.password'), pw, t('pw.rule'))),
+      error,
+      h('button', { type: 'submit', class: 'btn btn-primary', text: t('adm.add.btn') }));
+  }
+
+  function userRow(u) {
+    var self = u.id === ME.id;
+    var st = statusOfUser(u);
+    var role = roleOptions('role-' + u.id, u.role);
+    role.setAttribute('aria-label', t('adm.col.role') + ': ' + u.username);
+    role.addEventListener('change', function () {
+      var r = accounts.setRole(A, ME, u.id, role.value);
+      if (!adminResult(r, 'adm.role.done', u, { role: t('role.' + role.value) })) return;
+      if (self) { syncProfile(); persist(); }
+      if (self && ME.role !== 'admin') go('#/settings'); else render();
+    });
+    var parts = u.hash.split('$');
+    var actions = h('div', { class: 'actions' },
+      h('button', { type: 'button', class: 'btn btn-small', onclick: function () { askReset(u); }, text: t('adm.btn.reset') }),
+      st === 'locked' ? h('button', {
+        type: 'button', class: 'btn btn-small',
+        onclick: function () { if (adminResult(accounts.unlock(A, ME, u.id), 'adm.unlocked.done', u)) render(); },
+        text: t('adm.btn.unlock')
+      }) : null,
+      self ? null : h('button', {
+        type: 'button', class: 'btn btn-small',
+        onclick: function () {
+          var r = accounts.setDisabled(A, ME, u.id, !u.disabled);
+          if (adminResult(r, u.disabled ? 'adm.disabled.done' : 'adm.enabled.done', u)) render();
+        },
+        text: t(u.disabled ? 'adm.btn.enable' : 'adm.btn.disable')
+      }),
+      self ? null : h('button', { type: 'button', class: 'btn btn-small btn-danger-quiet', onclick: function () { askDelete(u); }, text: t('adm.btn.delete') }));
+    return h('tr', null,
+      h('td', { 'data-label': t('adm.col.user') },
+        h('span', { class: 'user-name', text: u.name + (self ? ' ' + t('adm.you') : '') }),
+        h('span', { class: 'user-login', text: u.username })),
+      h('td', { 'data-label': t('adm.col.role') }, role),
+      h('td', { 'data-label': t('adm.col.status') }, h('span', { class: 'st st-' + st, text: t('adm.status.' + st) }),
+        u.weak ? h('span', { class: 'weak', text: t('adm.weak.one') }) : null),
+      h('td', { 'data-label': t('adm.col.last'), class: 'nowrap', text: u.lastLogin ? fmtTime(u.lastLogin) : t('adm.never') }),
+      h('td', { 'data-label': t('adm.col.hash'), class: 'hash', title: u.hash, text: parts.length === 4 ? parts[3].slice(0, 12) + '…' : '' }),
+      h('td', { 'data-label': t('adm.col.actions') }, self ? h('p', { class: 'help', text: t('adm.self') }) : null, actions));
+  }
+
+  function pageAdmin() {
+    if (ME.role !== 'admin') {
+      return h('div', { class: 'page' },
+        h('h1', { tabindex: '-1', text: t('adm.h1') }),
+        emptyState('', t('adm.forbidden'), h('a', { class: 'btn btn-primary', href: '#/queue', text: t('nav.queue') })));
+    }
+    var users = A.users;
+    var weak = users.filter(function (u) { return u.weak; }).length;
+    var page = h('div', { class: 'page page-admin' },
+      h('h1', { tabindex: '-1', text: t('adm.h1') }),
+      h('p', { class: 'lead', text: t('adm.lead') }));
+    if (weak) page.appendChild(h('p', { class: 'notice notice-warn', text: t('adm.weak', { n: weak }) }));
+    page.appendChild(h('dl', { class: 'metrics' }, [
+      ['users', users.length],
+      ['admins', users.filter(function (u) { return u.role === 'admin' && !u.disabled; }).length],
+      ['disabled', users.filter(function (u) { return u.disabled; }).length],
+      ['locked', users.filter(function (u) { return accounts.isLocked(u); }).length]
+    ].map(function (m) { return h('div', null, h('dt', { text: t('adm.m.' + m[0]) }), h('dd', { text: String(m[1]) })); })));
+    page.appendChild(h('h2', { text: t('adm.list') }));
+    page.appendChild(h('div', { class: 'table-wrap' }, h('table', { class: 'plain users' },
+      h('thead', null, h('tr', null, ['user', 'role', 'status', 'last', 'hash', 'actions'].map(function (c) { return h('th', { scope: 'col', text: t('adm.col.' + c) }); }))),
+      h('tbody', null, users.map(userRow)))));
+    page.appendChild(h('p', { class: 'help', text: t('adm.hash.help') }));
+    page.appendChild(h('section', { class: 'panel' }, h('h2', { text: t('adm.add') }), addUserForm()));
+
+    var events = A.events.slice(-30).reverse();
+    page.appendChild(h('h2', { text: t('adm.events') }));
+    page.appendChild(events.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'plain' },
+      h('thead', null, h('tr', null, ['time', 'by', 'event', 'account'].map(function (c) { return h('th', { scope: 'col', text: t('adm.col.' + c) }); }))),
+      h('tbody', null, events.map(function (e) {
+        return h('tr', null,
+          h('td', { 'data-label': t('adm.col.time'), class: 'nowrap', text: fmtTime(e.at, true) }),
+          h('td', { 'data-label': t('adm.col.by'), class: 'mono', text: e.by || t('adm.system') }),
+          h('td', { 'data-label': t('adm.col.event'), text: t('acc.ev.' + e.event) }),
+          h('td', { 'data-label': t('adm.col.account'), class: 'mono', text: e.target || '' }));
+      })))) : h('p', { class: 'help', text: t('adm.events.empty') }));
+
+    page.appendChild(h('section', { class: 'panel' },
+      h('h2', { text: t('adm.restore') }),
+      h('p', { class: 'help', text: t('adm.restore.body') }),
+      h('button', {
+        type: 'button', class: 'btn btn-danger-quiet', text: t('adm.restore.btn'),
+        onclick: function () {
+          openDialog({
+            title: t('adm.restore.title'), confirm: t('adm.restore.btn'), danger: true,
+            body: h('p', { text: t('adm.restore.body') }),
+            onConfirm: function () {
+              A = accounts.reset();
+              accounts.state.events.push({ at: Date.now(), by: '', event: 'restored', target: '' });
+              saveAccounts();
+              accounts.endSession();
+              ME = null;
+              toast(t('adm.restored'));
+              go('#/login');
+              return '';
+            }
+          });
+        }
+      })));
+    return page;
+  }
+
   /* ---------- router ---------- */
 
   function route() {
     var hash = location.hash || '', m;
     if (hash === '' || hash === '#' || hash === '#/') return { name: M.cases.length ? 'queue' : 'connect' };
-    if ((m = /^#\/(connect|queue|audit|report|settings)$/.exec(hash))) return { name: m[1] };
+    if ((m = /^#\/(connect|queue|audit|report|settings|admin|login)$/.exec(hash))) return { name: m[1] };
     if ((m = /^#\/case\/([A-Za-z0-9-]{1,40})$/.exec(hash))) return { name: 'case', id: m[1] };
     if (hash === '#main') return { name: M.cases.length ? 'queue' : 'connect' };
     return { name: 'notfound' };
@@ -1156,6 +1423,7 @@
 
   var PAGES = {
     connect: pageConnect, queue: pageQueue, 'case': pageCase, audit: pageAudit, report: pageReport, settings: pageSettings,
+    admin: pageAdmin, login: function () { return h('div'); },
     notfound: function () {
       return h('div', { class: 'page' },
         h('h1', { tabindex: '-1', text: t('err.page.title') }),
@@ -1163,13 +1431,22 @@
     }
   };
 
+  /* Signed out: only the sign-in page. A temporary password: only the page that replaces it. */
+  function pageFor(r) {
+    if (!ME) return pageLogin();
+    if (ME.mustChange) return pageMustChange();
+    if (r.name === 'login') { setTimeout(function () { go(M.cases.length ? '#/queue' : '#/connect'); }, 0); return h('div'); }
+    return PAGES[r.name](r);
+  }
+
   function render(opts) {
     var r = route();
     document.documentElement.lang = I.get();
+    if (ME && !accounts.find(A, ME.id)) { ME = null; accounts.endSession(); }
     renderHeader(r);
     var main = $('main');
     main.textContent = '';
-    main.appendChild(PAGES[r.name](r));
+    main.appendChild(pageFor(r));
     var h1 = main.querySelector('h1');
     document.title = (h1 ? h1.textContent + ' | ' : '') + 'AegisFlow';
     if (opts && opts.focus) {
@@ -1180,12 +1457,15 @@
 
   function boot() {
     S = store.load();
+    A = accounts.load();
+    ME = accounts.session();
+    syncProfile();
     if (!S.lang) S.lang = /^kk/i.test(navigator.language || '') ? 'kk' : 'en';
     I.set(S.lang);
     rebuild();
     window.addEventListener('hashchange', function () { render({ focus: true }); });
     render();
-    if (store.wasCorrupt) toast(t('err.storage_corrupt'), 'error');
+    if (store.wasCorrupt || accounts.wasCorrupt) toast(t('err.storage_corrupt'), 'error');
     if (store.persistFailed) { V.storageWarned = true; toast(t('err.storage'), 'error'); }
   }
 

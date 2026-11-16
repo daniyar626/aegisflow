@@ -180,9 +180,15 @@ test('every text key the interface asks for exists', () => {
     'sev.': ['critical', 'high', 'medium', 'low'], 'verdict.': ['malicious', 'review', 'benign'],
     'conf.': ['high', 'medium', 'low'], 'st.': ['new', 'approved', 'dismissed', 'escalated'],
     'out.': ['approved', 'dismissed', 'escalated'], 'ev.': ['approved', 'dismissed', 'escalated', 'reopened', 'loaded'],
-    'ip.': ['public', 'private', 'doc', 'loopback', 'ipv6', 'invalid'], 'role.': ['analyst', 'viewer'],
+    'ip.': ['public', 'private', 'doc', 'loopback', 'ipv6', 'invalid'], 'role.': ['admin', 'analyst', 'viewer'],
     'err.': ['empty', 'invalid_json', 'no_valid', 'too_many', 'too_large', 'read', 'paste_empty'],
-    'nav.': ['connect', 'queue', 'audit', 'report', 'settings'],
+    'nav.': ['connect', 'queue', 'audit', 'report', 'settings', 'admin'],
+    'login.err.': ['bad', 'locked', 'disabled'],
+    'acc.err.': ['username_format', 'username_taken', 'name_short', 'role', 'password_weak', 'password_same', 'current_wrong', 'forbidden', 'missing', 'self', 'last_admin'],
+    'acc.ev.': ['login', 'login_failed', 'login_disabled', 'locked', 'created', 'deleted', 'disabled', 'enabled', 'unlocked', 'password_reset', 'password_changed', 'role_admin', 'role_analyst', 'role_viewer', 'restored'],
+    'adm.status.': ['active', 'disabled', 'locked', 'mustchange'],
+    'adm.m.': ['users', 'admins', 'disabled', 'locked'],
+    'adm.col.': ['user', 'role', 'status', 'last', 'hash', 'actions', 'time', 'by', 'event', 'account'],
     'c.': ['clear', 'corroborated', 'no_rep', 'rep_unavailable', 'borderline', 'no_pattern', 'few', 'ambiguous'],
     'f.': ['level', 'volume', 'rep_listed', 'internal', 'ext_success', 'after_intrusion', 'high_level_unknown']
   };

@@ -67,7 +67,7 @@ h1:focus, .slip:focus, .tl-row:focus, .form-error:focus { outline: none; }
 .top { background: var(--ink); color: #eaf0f7; }
 .top-in {
   max-width: 1240px; margin: 0 auto; padding: 0 20px;
-  display: flex; align-items: center; gap: 28px; min-height: 58px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 20px; min-height: 58px; flex-wrap: wrap;
 }
 .brand {
   display: inline-flex; align-items: center; gap: 9px;
@@ -77,7 +77,7 @@ h1:focus, .slip:focus, .tl-row:focus, .form-error:focus { outline: none; }
 .nav { flex: 1; min-width: 0; }
 .nav ul { display: flex; gap: 4px; overflow-x: auto; }
 .nav a {
-  display: block; padding: 18px 12px 15px; color: #c9d4e3; text-decoration: none;
+  display: block; padding: 18px 10px 15px; color: #c9d4e3; text-decoration: none;
   border-bottom: 3px solid transparent; white-space: nowrap; font-weight: 500;
 }
 .nav a:hover { color: #fff; }
@@ -92,6 +92,11 @@ h1:focus, .slip:focus, .tl-row:focus, .form-error:focus { outline: none; }
 .lang[aria-pressed="true"] { background: var(--mint); color: var(--ink); }
 .who { color: #c9d4e3; font-size: 0.875rem; text-decoration: none; max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who:hover { color: #fff; text-decoration: underline; }
+.signout {
+  font: 600 0.8125rem/1 var(--sans); padding: 8px 11px; border-radius: 4px; cursor: pointer;
+  background: transparent; color: #c9d4e3; border: 1px solid #5d6c89;
+}
+.signout:hover { color: #fff; border-color: #c9d4e3; }
 
 .foot { max-width: 1240px; width: 100%; margin: 0 auto; padding: 16px 20px 28px; color: var(--ink-2); font-size: 0.8125rem; }
 
@@ -137,7 +142,7 @@ h3 { font: 650 1rem/1.35 var(--sans); }
 
 .field { display: grid; gap: 5px; min-width: 0; }
 .field label, legend { font-weight: 600; font-size: 0.875rem; padding: 0; }
-input[type="text"], input[type="search"], select, textarea {
+input[type="text"], input[type="search"], input[type="password"], select, textarea {
   font: inherit; color: var(--ink); background: var(--surface); width: 100%;
   border: 1px solid var(--rule-strong); border-radius: 4px; padding: 9px 10px;
 }
@@ -212,6 +217,10 @@ td.mono { white-space: nowrap; }
 .st-approved { color: var(--teal); }
 .st-escalated { color: var(--med); }
 .st-dismissed, .st-reopened, .st-loaded { color: var(--ink-2); }
+.st-active { color: var(--teal); }
+.st-disabled { color: var(--crit); }
+.st-locked { color: var(--high); }
+.st-mustchange { color: var(--med); }
 .chip { font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
 
 /* ---------- case page ---------- */
@@ -303,6 +312,20 @@ td.mono { white-space: nowrap; }
 .panel ul li { padding: 3px 0 3px 1.1em; position: relative; max-width: 70ch; }
 .panel ul li::before { content: ""; position: absolute; left: 0; top: 0.8em; width: 0.5em; height: 2px; background: var(--ink-2); }
 
+/* ---------- sign-in and accounts ---------- */
+.login { max-width: 28rem; }
+.login > * + * { margin-top: 16px; }
+.login-form > * + * { margin-top: 14px; }
+.login-form .btn { width: 100%; }
+.grid-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; align-items: start; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn-small { padding: 5px 9px; font-size: 0.8125rem; }
+.users select { padding: 6px 8px; min-width: 9.5rem; }
+.user-name { font-weight: 600; display: block; }
+.user-login { display: block; color: var(--ink-2); font: 0.8125rem/1.4 var(--mono); }
+.hash { font: 0.8125rem/1.4 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.weak { display: block; margin-top: 4px; font-size: 0.8125rem; color: var(--med); font-weight: 600; }
+
 /* ---------- dialog and toasts ---------- */
 .dlg { border: 0; border-radius: 6px; padding: 26px 26px 22px; width: min(36rem, calc(100vw - 32px)); color: var(--ink); box-shadow: 0 24px 70px rgba(20, 33, 61, 0.38); }
 .dlg::backdrop { background: rgba(20, 33, 61, 0.58); }
@@ -331,7 +354,7 @@ td.mono { white-space: nowrap; }
   .top-side { margin-left: auto; }
   .who { display: none; }
   .page { padding-top: 22px; }
-  .row, .sources, .facts { grid-template-columns: minmax(0, 1fr); }
+  .row, .sources, .facts, .grid-form { grid-template-columns: minmax(0, 1fr); }
   .steps > li { grid-template-columns: 2.4rem minmax(0, 1fr); }
   .steps > li::before { font-size: 2rem; }
   .table-wrap { border: 0; background: none; overflow: visible; }
